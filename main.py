@@ -59,7 +59,7 @@ def predict(house:HouseFeatures):
       ]
     )
 
-    predicted = model.predict(input)[0]
+    predicted = model.predict(input_data)[0]
     price_usd=predicted*100000
 
     return{
