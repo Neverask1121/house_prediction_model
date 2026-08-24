@@ -76,54 +76,58 @@ def predict(house:HouseFeatures):
     )  
 
 @app.post("/predict-file")
-async def predict_file(file: UploadFile=File(...)):
-  if not file.filename.endswith(".csv"):
-    raise HTTPException(
-      status_code=400,
-      detail="The file type is invalid"
-    )
+async def predict_file(file: UploadFile = File(...)):
+    if not file.filename.endswith(".csv"):
+        raise HTTPException(
+            status_code=400,
+            detail="The file type is invalid"
+        )
 
-  contents = await file.read()
+    contents = await file.read()
 
-  df = pd.DataFrame(io.BytesIO(contents))
+    # FIX 1: Use pd.read_csv to parse CSV contents correctly
+    df = pd.read_csv(io.BytesIO(contents))
 
-  required_columns = [
-    'MedInc', 'HouseAge', 'AveRooms', 'AveBedrms', 'Population',
-    'AveOccup', 'Latitude', 'Longitude'
-  ]
-  missing_columns = [
-    col for col in required_columns
-    if col not in df.columns 
-  ]
-  if missing_columns:
-    raise HTTPException(
-      status_code = 400,
-      detail = f'These columns are missing from the file{missing_columns}'
-    )
-  if len(df) == 0:
-    raise HTTPException(
-      status_code=400,
-      detail='The uploaded file has no data rows bro'
-    )
-  try:
-    prediction = model.predict(df[required_columns])
-
-    df["predicted_columns_usd"] = df["predicted_columns_usd"].apply(lambda x: f"{x:,.0f}")
-
-    output = df.to_csv(index=False)
-
-    return StreamingResponse(
-      io.StringIO(output),
-      media_type = "text/csv",
-      header={
-        "Content-Disposition":"attachment; filename = prediction.csv"
-      }
-    )
-  except Exception as e:
-    raise HTTPException(BaseModel)(
-      status_code = 500,
-      detail = f"The prediction has failed: {str(e)}"
-    )
-
-
+    required_columns = [
+        'MedInc', 'HouseAge', 'AveRooms', 'AveBedrms', 'Population',
+        'AveOccup', 'Latitude', 'Longitude'
+    ]
     
+    missing_columns = [col for col in required_columns if col not in df.columns]
+    
+    if missing_columns:
+        raise HTTPException(
+            status_code=400,
+            detail=f'These columns are missing from the file: {missing_columns}'
+        )
+        
+    if len(df) == 0:
+        raise HTTPException(
+            status_code=400,
+            detail='The uploaded file has no data rows'
+        )
+        
+    try:
+        # FIX 2: Assign model output to the dataframe column before formatting
+        predictions = model.predict(df[required_columns])
+        price_usd = predictions * 100000
+        
+        df["predicted_columns_usd"] = price_usd
+        df["predicted_columns_usd"] = df["predicted_columns_usd"].apply(lambda x: f"${x:,.0f}")
+
+        output = df.to_csv(index=False)
+
+        # FIX 3: Corrected headers parameter name
+        return StreamingResponse(
+            io.StringIO(output),
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": "attachment; filename=prediction.csv"
+            }
+        )
+    # FIX 4: Removed invalid (BaseModel) reference
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"The prediction has failed: {str(e)}"
+        )
